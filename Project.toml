@@ -3,5 +3,15 @@ uuid = "32c98a03-759d-4fa5-b115-074a4aee5452"
 authors = ["Cristina Moraru <lilianacristina.moraru@uni-due.de>"]
 version = "0.8.0"
 
+[deps]
+BioS_ExtTools = "2ab26461-0724-42ce-b75e-a46d47467e92"
+BioS_Gen = "a3c344c2-dffd-44c7-b934-12f2f183f71e"
+BioS_ProjsWFs = "36c12c74-29c3-48bc-adf7-572884ba4778"
+BioS_SeqFuns = "f626d2e5-ec45-404c-84c6-8efe5c847b30"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+
 [compat]
 julia = "1.10"
