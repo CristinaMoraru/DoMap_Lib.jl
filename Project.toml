@@ -1,0 +1,7 @@
+name = "DoMap_Lib"
+uuid = "32c98a03-759d-4fa5-b115-074a4aee5452"
+authors = ["Cristina Moraru <lilianacristina.moraru@uni-due.de>"]
+version = "0.8.0"
+
+[compat]
+julia = "1.10"
