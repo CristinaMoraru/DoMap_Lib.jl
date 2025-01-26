@@ -1,18 +1,21 @@
 
-export set_ProjReadmapIndexing, set_ProjReadMapMapping, ProjDoMap_fun
+export ALLOWED_DoMAP, set_ProjReadmapIndexing, set_ProjReadMapMapping, ProjSDoMap_fun
 
 const ALLOWED_DoMAP = Dict(
     "readtypes" => ("short", "long", "mixed"),
-    "maptool" => ("bowtie2", "minimap2"),
-    "tokeep" => ("sam", "bam", "sam-bam")
+    "maptool" => ("bowtie2", "minimap2", "bbmap"),
+    "tokeep" => ("sam", "bam", "sam-bam"),
+    "bbmap_ambiguous" => ("best", "toss", "random", "all")
 )
 
-function set_ProjReadmapIndexing(pd::String, args::Vector{String}, maptool::String, inref::FnaP, num_threads::Int64)
+
+# check the code here, I"ve introduced the "parentD" variable in DoMp, but I did not modify the corresponding DoBowtie functions and structs; I've modified MiniMap2 code, but it needs to be checked
+function set_ProjReadmapIndexing(pd::String, sampleName::String, args::Vector{String}, maptool::String, inref::FnaP, num_threads::Int64)
     if maptool == "bowtie2"
         #region bowtie indexing
             bowtie2index_args = [
                 "projtype=index",
-                "pd=$pd",         # here the pd is the same as the one for the whole proj, because DoBowtie is a complex workflow, with multiple steps
+                "pd=$pd/$(sampleName)",         # here the pd is the same as the one for the whole proj, because DoBowtie is a complex workflow, with multiple steps
                 "inref=$(inref.p)",
                 "cpu=$num_threads",
                 "rm_prev=false"
@@ -24,16 +27,16 @@ function set_ProjReadmapIndexing(pd::String, args::Vector{String}, maptool::Stri
 
         #region minimap2 indexing
         if readtypes in ["short", "mixed"]
-            MiniMap2Index_Ds = "$(pd)/minimap2index/short"
+            MiniMap2Index_Ds = "$(sampleName)/minimap2index/short"
             MiniMap2IndexLogs_Ds = "$(MiniMap2Index_Ds)/logs"
             #MiniMap2IndexLogs_Ds = "$(minimap2Logs_D)/index/short"
-            my_mkpath([MiniMap2Index_Ds, MiniMap2IndexLogs_Ds])
+            my_mkpath(["$(pd)/$MiniMap2Index_Ds", "$(pd)/$MiniMap2IndexLogs_Ds"])
             index_projs = ProjMiniMap2Index(MiniMap2Index_Ds, WrapCmd(; cmd = RunMiniMap2IndexCmd(minimap2_p, "sr", inref, MmiP("$(MiniMap2Index_Ds)/$(indexname).mmi")), 
                 log_p = "$(MiniMap2IndexLogs_Ds)/log_index.txt", err_p = "$(MiniMap2IndexLogs_Ds)/err_index.txt", exit_p = "$(MiniMap2IndexLogs_Ds)/exit_index.txt"))#, env = minimap2_env))
         end
 
         if readtypes in ["long", "mixed"]
-            MiniMap2Index_Dl = "$(pd)/minimap2index/long"
+            MiniMap2Index_Dl = "$(sampleName)/minimap2index/long"
             MiniMap2IndexLogs_Dl = "$(MiniMap2Index_Dl)/logs"
             my_mkpath([MiniMap2Index_Dl, MiniMap2IndexLogs_Dl])
             index_projl = ProjMiniMap2Index(MiniMap2Index_Dl, WrapCmd(; cmd = RunMiniMap2IndexCmd(minimap2_p, "map-ont", inref, MmiP("$(MiniMap2Index_Dl)/$(indexname).mmi")), 
@@ -48,12 +51,54 @@ function set_ProjReadmapIndexing(pd::String, args::Vector{String}, maptool::Stri
             index_proj = [index_projs, index_projl]
         end
         #endregion
+    elseif maptool == "bbmap"
+        #region BBMap indexing
+        bbmap_p = extract_inPaths(args, "bbmap_p")
+
+        bbmapIndex_D = "$(sampleName)/bbmap/"
+        bbmapIndexLogs_D = "$(bbmapIndex_D)/logs_ref"
+        my_mkpath(["$(pd)/$(bbmapIndex_D)", "$(pd)/$bbmapIndexLogs_D"])
+        index_proj = [ProjBBMapIndex(bbmapIndex_D, WrapCmd(; cmd = RunBBMapIndex(bbmap_p, inref),
+            log_p = "$(bbmapIndexLogs_D)/log_index.txt", err_p = "$(bbmapIndexLogs_D)/err_index.txt", exit_p = "$(bbmapIndexLogs_D)/exit_index.txt"))]
+        #endregion
     end
 
     return index_proj
 end
 
-function set_ProjReadMapMapping(pd::String, args::Vector{String}, maptool::String, inref::FnaP, num_threads::Int64, index_proj::Vector{T}, inreadpairs::DataFrame) where T <: ProjReadMapIndexing
+function set_postmapping_Minmap2_BBMap(outbase::String, out_f::SamP, samview_flag4exclusion::Bool, samview_flag4exclusion_val::String, samtools_p::String, num_threads::Int64, logsD::String)
+    outview2sam_f = "$(outbase)_filt.sam" |> SamP
+    outsorts_f = "$(outbase)_filt_sorted.sam" |> SamP
+    outsortb_f = "$(outbase)_filt_sorted.bam" |> BamP
+    covout_p = "$(outbase)_filt_sorted_coverage.tsv" |> TableP
+
+    if samview_flag4exclusion == false
+        more_opts = ["-h"]
+    else
+        more_opts = ["-h", "-F", "$samview_flag4exclusion_val"]
+    end
+
+    samtoolsView2Sam = WrapCmd(; cmd = RunSamtoolsViewCmd(samtools_p, more_opts, num_threads, out_f, outview2sam_f),              # the input for this step is the original sam file, not the shrinked one
+        log_p = "$logsD/logSamtoolsView2Sam.txt", err_p = "$logsD/errSamtoolsView2Sam.txt", exit_p = "$logsD/exitSamtoolsView2Sam.txt")
+        
+    # sorts the sam file
+    samtoolsSort2Sam = WrapCmd(; cmd = RunSamtoolsSortCmd(samtools_p, ["-O", "SAM"], num_threads, outview2sam_f, outsorts_f),
+        log_p = "$logsD/logSamtoolsSort2Sam.txt", err_p = "$logsD/errSamtoolsSort2Sam.txt", exit_p = "$logsD/exitSamtoolsSort2Sam.txt")
+
+    # converts the ordered sam to bam (keeps the header)
+    samtoolsView2Bam = WrapCmd(; cmd = RunSamtoolsViewCmd(samtools_p, ["-h", "-b"], num_threads, outsorts_f, outsortb_f),
+        log_p = "$logsD/logSamtoolsView2Bam.txt", err_p = "$logsD/errSamtoolsView2Bam.txt", exit_p = "$logsD/exitSamtoolsView2Bam.txt")
+
+    # calculates the coverage (ignores reads smaller than 50 bases)
+    samtoolsCoverage = WrapCmd(; cmd = RunSamtoolsCovCmd(samtools_p, ["-l", "50"], outsorts_f, covout_p),  #["--min-MQ", "30"] removes reads with low MAPQ score
+        log_p = "$(logsD)/logSamtoolsCov.txt", err_p = "$(logsD)/errSamtoolsCov.txt", exit_p = "$(logsD)/exitSamtoolsCov.txt")
+
+    return (samtoolsView2Sam, samtoolsSort2Sam, samtoolsView2Bam, samtoolsCoverage)
+
+end
+
+# check the code here, I"ve introduced the "parentD" variable in DoMp, but I did not modify the corresponding DoBowtie functions and structs; I've modified MiniMap2 code, but it needs to be checked
+function set_ProjReadMapMapping(pd::String, sampleName::String, args::Vector{String}, maptool::String, inref::FnaP, num_threads::Int64, index_proj::Vector{T}, inreadpairs::DataFrame) where T <: ProjReadMapIndexing
     samtools_p = extract_inPaths(args, "samtools_p")
 
     tokeep = extract_args(args, "tokeep", "bam"; allowed = ALLOWED_DoMAP["tokeep"])
@@ -85,7 +130,7 @@ function set_ProjReadMapMapping(pd::String, args::Vector{String}, maptool::Strin
             # bowtie2 mapping obj for each row in the Df
             bowtie2map_args = [
                 "projtype=map",
-                "pd=$pd/map/$readname", 
+                "pd=$pd/$(sampleName)/map/$readname", 
                 "indexD=$(index_proj[1].BowtieBuild.cmd.indexD)",
                 "indexname=$(index_proj[1].BowtieBuild.cmd.indexname)",
                 "inref=$(inref.p)",
@@ -103,59 +148,65 @@ function set_ProjReadMapMapping(pd::String, args::Vector{String}, maptool::Strin
             map_proj = initialize_bowtieproj(bowtie2map_args)
         #endregion
         elseif maptool == "minimap2"
+            #region minimap2
             minimap2_p = extract_inPaths(args, "minimap2_p")
 
             #region minimap2 mapping
             minimap_parm = inreadpairs[row, 3]
-            MiniMap2Alig_D = "$(pd)/map/minimap2/$readname"
-            MiniMap2AligLogs_D = "$(MiniMap2Alig_D)/logs"
-            my_mkpath([MiniMap2Alig_D, MiniMap2AligLogs_D])
+            miniMap2Alig_D = "$(sampleName)/map/minimap2/$readname"
+            miniMapAligLogs_D = "$(miniMap2Alig_D)/logs"
+            my_mkpath(["$(pd)/$miniMap2Alig_D", "$(pd)/$miniMapAligLogs_D"])
 
-            outbase = "$MiniMap2Alig_D/$(indexname)_$(readname)"
+            outbase = "$miniMap2Alig_D/$(indexname)_$(readname)"
             out_f = "$(outbase).sam" |> SamP
             #outs_f = "$(outbase)_shrink.sam" |> SamP
-            outview2sam_f = "$(outbase)_filt.sam" |> SamP
-            outsorts_f = "$(outbase)_filt_sorted.sam" |> SamP
-            outsortb_f = "$(outbase)_filt_sorted.bam" |> BamP
-            covout_p = "$(outbase)_filt_sorted_coverage.tsv" |> TableP
+
 
             # minimap2
             if minimap_parm == "sr"    
-                MiniMap2Alig = WrapCmd(cmd = RunMiniMap2AligCmd(minimap2_p, num_threads, "sr", index_projs.MiniMap2Index.cmd.index, FastaQP(read1), FastaQP(read2), out_f),
-                    log_p = "$(MiniMap2AligLogs_D)/log.txt", err_p = "$(MiniMap2AligLogs_D)/err.txt", exit_p = "$(MiniMap2AligLogs_D)/exit.txt")#, env = minimap2_env)
+                miniMap2Alig = WrapCmd(cmd = RunMiniMap2AligCmd(minimap2_p, num_threads, "sr", index_projs.MiniMap2Index.cmd.index, FastaQP(read1), FastaQP(read2), out_f),
+                    log_p = "$(miniMapAligLogs_D)/log.txt", err_p = "$(miniMapAligLogs_D)/err.txt", exit_p = "$(miniMapAligLogs_D)/exit.txt")#, env = minimap2_env)
             elseif minimap_parm == "map-ont"
-                MiniMap2Alig = WrapCmd(cmd = RunMiniMap2AligCmd(minimap2_p, num_threads, "map-ont", index_projl.MiniMap2Index.cmd.index, FastaQP(read1), missing, out_f),
-                    log_p = "$(MiniMap2AligLogs_D)/log.txt", err_p = "$(MiniMap2AligLogs_D)/err.txt", exit_p = "$(MiniMap2AligLogs_D)/exit.txt")#, env = minimap2_env)
+                miniMap2Alig = WrapCmd(cmd = RunMiniMap2AligCmd(minimap2_p, num_threads, "map-ont", index_projl.MiniMap2Index.cmd.index, FastaQP(read1), missing, out_f),
+                    log_p = "$(miniMapAligLogs_D)/log.txt", err_p = "$(miniMapAligLogs_D)/err.txt", exit_p = "$(miniMapAligLogs_D)/exit.txt")#, env = minimap2_env)
             end
             
             
-            # removes unpaired reads
-            #=Shrinksam = WrapCmd(; cmd = RunShrinksamCmd(shrinksam_p, out_f, outs_f, false), 
-                log_p = "$MiniMap2AligLogs_D/logShrink.txt", err_p = "$MiniMap2AligLogs_D/errShrink.txt", exit_p = "$MiniMap2AligLogs_D/exitShrink.txt")=#
+            samtoolsView2Sam, samtoolsSort2Sam, samtoolsView2Bam, samtoolsCoverage = set_postmapping_Minmap2_BBMap(outbase, out_f, samview_flag4exclusion, samview_flag4exclusion_val, samtools_p, num_threads, miniMapAligLogs_D)
 
-            # removes reads with Flag 3584 (read fails quality check, read is PCR or optical duplicate, supplementary alignment; keeps the header)
-            if samview_flag4exclusion == false
-                more_opts = ["-h"]
-            else
-                more_opts = ["-h", "-F", "$samview_flag4exclusion_val"]
-            end
+            map_proj = ProjMiniMap2Alig(miniMap2Alig_D, miniMap2Alig, samtoolsView2Sam, samtoolsSort2Sam, samtoolsView2Bam, samtoolsCoverage) #Shrinksam, 
+            #endregion
+        elseif maptool == "bbmap"
+            #region bbmap map
+            bbmap_p = extract_inPaths(args, "bbmap_p")
 
-            SamtoolsView2Sam = WrapCmd(; cmd = RunSamtoolsViewCmd(samtools_p, more_opts, num_threads, out_f, outview2sam_f),              # now the input for this step is the original sam file, not the shrinked one
-                log_p = "$MiniMap2AligLogs_D/logSamtoolsView2Sam.txt", err_p = "$MiniMap2AligLogs_D/errSamtoolsView2Sam.txt", exit_p = "$MiniMap2AligLogs_D/exitSamtoolsView2Sam.txt")
-                
-            # sorts the sam file
-            SamtoolsSort2Sam = WrapCmd(; cmd = RunSamtoolsSortCmd(samtools_p, ["-O", "SAM"], num_threads, outview2sam_f, outsorts_f),
-                log_p = "$MiniMap2AligLogs_D/logSamtoolsSort2Sam.txt", err_p = "$MiniMap2AligLogs_D/errSamtoolsSort2Sam.txt", exit_p = "$MiniMap2AligLogs_D/exitSamtoolsSort2Sam.txt")
+            println("bbmap branch")
+            bbmapMap_D = "$(sampleName)/bbmap/mapout/$readname"
+            bbmapMapLogs_D = "$(bbmapMap_D)/logs"
+            bbmapMapStats_D = "$(bbmapMap_D)/stats"
+            my_mkpath(["$(pd)/$bbmapMap_D", "$(pd)/$bbmapMapLogs_D", "$(pd)/$bbmapMapStats_D"])
 
-            # converts the ordered sam to bam (keeps the header)
-            SamtoolsView2Bam = WrapCmd(; cmd = RunSamtoolsViewCmd(samtools_p, ["-h", "-b"], num_threads, outsorts_f, outsortb_f),
-                log_p = "$MiniMap2AligLogs_D/logSamtoolsView2Bam.txt", err_p = "$MiniMap2AligLogs_D/errSamtoolsView2Bam.txt", exit_p = "$MiniMap2AligLogs_D/exitSamtoolsView2Bam.txt")
+            #filtering options
+            idfilter = extract_args(args, "idfilter", Float64, 0.95, 0.0, 1.0)
+            subfilter = extract_args(args, "subfilter", Int64, 0, 0, 100)
+            insfilter = extract_args(args, "insfilter", Int64, 0, 0, 100)
+            delfilter = extract_args(args, "delfilter", Int64, 0, 0, 100)
+            indelfilter = extract_args(args, "indelfilter", Int64, 0, 0, 100)
+            inslenfilter = extract_args(args, "inslenfilter", Int64, 0, 0, 100)
+            dellenfilter = extract_args(args, "dellenfilter", Int64, 0, 0, 100)
+            nfilter = extract_args(args, "nfilter", Int64, 0, 0, 100)
+            ambiguous = extract_args(args, "ambiguous", "toss"; allowed = ALLOWED_DoMAP["bbmap_ambiguous"])
 
-            # calculates the coverage (ignores reads smaller than 50 bases)
-            SamtoolsCoverage = WrapCmd(; cmd = RunSamtoolsCovCmd(samtools_p, ["-l", "50"], outsorts_f, covout_p),  #["--min-MQ", "30"] removes reads with low MAPQ score
-                log_p = "$(MiniMap2AligLogs_D)/logSamtoolsCov.txt", err_p = "$(MiniMap2AligLogs_D)/errSamtoolsCov.txt", exit_p = "$(MiniMap2AligLogs_D)/exitSamtoolsCov.txt")
+            outbase = "$bbmapMap_D/$(sampleName)___$(readname)"
+            out_f = "$(outbase).sam" |> SamP
 
-            map_proj = ProjMiniMap2Alig(MiniMap2Alig_D, MiniMap2Alig, SamtoolsView2Sam, SamtoolsSort2Sam, SamtoolsView2Bam, SamtoolsCoverage) #Shrinksam, 
+            bbmapMap = WrapCmd(; cmd = RunBBMapMap(bbmap_p, num_threads, FastaQP(read1), FastaQP(read2), out_f, bbmapMapStats_D, 
+                idfilter, subfilter, insfilter, delfilter, indelfilter, inslenfilter, dellenfilter, nfilter, ambiguous), 
+                log_p = "$(bbmapMapLogs_D)/log.txt", err_p = "$(bbmapMapLogs_D)/errs.txt", exit_p = "$(bbmapMapLogs_D)/exit.txt")
+
+            samtoolsView2Sam, samtoolsSort2Sam, samtoolsView2Bam, samtoolsCoverage = set_postmapping_Minmap2_BBMap(outbase, out_f, samview_flag4exclusion, samview_flag4exclusion_val, samtools_p, num_threads, bbmapMapLogs_D)
+
+            map_proj = ProjBBmapMap("$(sampleName)/bbmap/", bbmapMap, samtoolsView2Sam, samtoolsSort2Sam, samtoolsView2Bam, samtoolsCoverage)
             #endregion
         end
 
@@ -168,7 +219,7 @@ function set_ProjReadMapMapping(pd::String, args::Vector{String}, maptool::Strin
     return readpair_vec
 end        
 
-function ProjDoMap_fun(args::Vector{String})
+function ProjSDoMap_fun(args::Vector{String})
     # num_threads
     num_threads = extract_args(args, "num_threads", Int64, 1, 1, 40)
 
@@ -181,10 +232,11 @@ function ProjDoMap_fun(args::Vector{String})
 
     # folders
     pd_prefix = extract_args(args, "pd_prefix")
-    pd = "$(pd_prefix)$(sampleName)"
+    pd = "$(pd_prefix)/"
 
     if cont == false
-        do_pd(pd)
+        println("before do_pd")
+        do_pd("$(pd)/$(sampleName)")
         dosteps = Dict(
             "indexing" => WorkflowStatus("do", "not_done"),
             "mapping" => WorkflowStatus("do", "not_done"))
@@ -203,17 +255,17 @@ function ProjDoMap_fun(args::Vector{String})
 
         proj = ProjSDoMap(pd = pd, sampleName = sampleName, cont = cont, maptool = maptool, readtypes = readtypes, inref = inref, inreadpairs = inreadpairs, dosteps = dosteps)
     else   # this section is in work, just a placehodler for the moment
-        proj = load_proj("$(pd)/sproj.binary", pd, inref, sampleName)
+        proj = load_proj("$(pd)/$(sampleName)/sproj.binary", pd, inref, sampleName)
 
         dosteps = proj.dosteps
     end
 
-    mapindex = initialize_step(dosteps, "indexing", set_ProjReadmapIndexing, (pd, args, maptool, inref, num_threads), proj.mapindex, cont) 
-    perreadpairs = initialize_step(dosteps, "mapping", set_ProjReadMapMapping, (pd, args, maptool, inref, num_threads, mapindex, inreadpairs), proj.perreadpairs, cont)
+    mapindex = initialize_step(dosteps, "indexing", set_ProjReadmapIndexing, (pd, sampleName, args, maptool, inref, num_threads), proj.mapindex, cont) 
+    perreadpairs = initialize_step(dosteps, "mapping", set_ProjReadMapMapping, (pd, sampleName, args, maptool, inref, num_threads, mapindex, inreadpairs), proj.perreadpairs, cont)
 
     proj = nothing
     sproj = ProjSDoMap("singleworkflow", pd, sampleName, cont, maptool, readtypes, inref, inreadpairs, dosteps, mapindex, perreadpairs)
 
-    serialize("$(pd)/sproj.binary", sproj)
+    serialize("$(pd)/$(sampleName)/sproj.binary", sproj)
     return sproj
 end

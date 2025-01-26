@@ -24,35 +24,35 @@ version = "0.1.5"
 
 [[deps.BioS_ExtTools]]
 deps = ["BioS_Gen", "BioS_ProjsWFs", "BioS_SeqFuns", "CSV", "DataFrames", "Statistics"]
-git-tree-sha1 = "12f9fe8b6dbb3ac03c7b46f5b78e6e33f68d26f5"
-repo-rev = "v0.4.2"
+git-tree-sha1 = "049ef293489e8e668e7673656c424c88c6cfb09d"
+repo-rev = "v0.4.3"
 repo-url = "https://github.com/CristinaMoraru/BioS_ExtTools.jl"
 uuid = "2ab26461-0724-42ce-b75e-a46d47467e92"
-version = "0.4.2"
+version = "0.4.3"
 
 [[deps.BioS_Gen]]
 deps = ["DataFrames", "StringAlgorithms"]
-git-tree-sha1 = "93ab37d662d0d98cb0a8ad5be5b4aef4ff71a7a5"
-repo-rev = "v0.2.1"
+git-tree-sha1 = "033888945f7aa2aca538e01832ffb2ec9423da78"
+repo-rev = "v0.2.2"
 repo-url = "https://github.com/CristinaMoraru/BioS_Gen.jl"
 uuid = "a3c344c2-dffd-44c7-b934-12f2f183f71e"
-version = "0.2.1"
+version = "0.2.2"
 
 [[deps.BioS_ProjsWFs]]
 deps = ["BioS_Gen", "CSV", "DataFrames", "Serialization"]
-git-tree-sha1 = "a47d68b7874401b46b7d8b67c7ec26c589b442b8"
-repo-rev = "v0.2.0"
+git-tree-sha1 = "8221195b2f833cc4b37bcc967b787bd743ac1b5a"
+repo-rev = "v0.2.1"
 repo-url = "https://github.com/CristinaMoraru/BioS_ProjsWFs.jl"
 uuid = "36c12c74-29c3-48bc-adf7-572884ba4778"
-version = "0.2.0"
+version = "0.2.1"
 
 [[deps.BioS_SeqFuns]]
 deps = ["BioS_Gen", "BioSequences", "CSV", "DataFrames", "FASTX", "FastaIO", "Suppressor"]
-git-tree-sha1 = "5304ccd94ccfb8b62e054c46a3457b3a564d6dc7"
-repo-rev = "v0.2.4"
+git-tree-sha1 = "1df08393ab475088b9413cc3a49303a9add1807b"
+repo-rev = "v0.2.5"
 repo-url = "https://github.com/CristinaMoraru/BioS_SeqFuns.jl"
 uuid = "f626d2e5-ec45-404c-84c6-8efe5c847b30"
-version = "0.2.4"
+version = "0.2.5"
 
 [[deps.BioSequences]]
 deps = ["BioSymbols", "PrecompileTools", "Random", "Twiddle"]

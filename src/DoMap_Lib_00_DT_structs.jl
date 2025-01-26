@@ -1,6 +1,7 @@
-export ProjReadMap, ProjMiniMap2Index, ProjMiniMap2Alig, PerReadPair
+#export ProjReadMap, 
+export ProjMiniMap2Index, ProjMiniMap2Alig, ProjBBMapIndex, ProjBBmapMap, PerReadPair, ProjSDoMap
 
-
+#region Minimap
 struct ProjMiniMap2Index <: ProjReadMapIndexing
     pd::String
     MiniMap2Index::WrapCmd{RunMiniMap2IndexCmd}
@@ -15,11 +16,30 @@ struct ProjMiniMap2Alig <: ProjReadMapMapping
     SamtoolsView2Bam::WrapCmd{RunSamtoolsViewCmd}
     SamtoolsCoverage::WrapCmd{RunSamtoolsCovCmd}
 end
+#endregion
 
+#region BBMap
+struct ProjBBMapIndex <: ProjReadMapIndexing
+    pd::String
+    BBmapIndex::WrapCmd{RunBBMapIndex}
+end
+
+struct ProjBBmapMap <: ProjReadMapMapping
+    pd::String
+    BBMapMap::WrapCmd{RunBBMapMap}
+    SamtoolsView2Sam::WrapCmd{RunSamtoolsViewCmd}
+    SamtoolsSort2Sam::WrapCmd{RunSamtoolsSortCmd}
+    SamtoolsView2Bam::WrapCmd{RunSamtoolsViewCmd}
+    SamtoolsCoverage::WrapCmd{RunSamtoolsCovCmd}
+end
+
+#endregion
+
+#region MapProject
 struct PerReadPair
     readname::String
     mapping::ProjReadMapMapping
-    cov4MaxBin2::TableP
+    cov4MaxBin2::Union{Nothing, TableP}
     tokeep::String
 end
 
@@ -37,3 +57,5 @@ Base.@kwdef mutable struct ProjSDoMap <: BioinfSProj
     mapindex::Union{Missing, Vector{T}} where T <: ProjReadMapIndexing = missing
     perreadpairs::Union{Missing, Vector{PerReadPair}} = missing
 end
+#endregion
+

@@ -19,44 +19,57 @@ include("DoMap_Lib_000_Run.jl")
 
 #args = ARGS
 
-#ProjMultiWorkflow - a multiple binning workflow
+#=ProjMultiWorkflow - a multiple binning workflow
 const args = [
     "projtype=multipleworkflow",
-    "spd=/data3/CLM_projs/RESIST_proposal/C13/mapping/out/all",
-    "allrefs_params=/data3/CLM_projs/RESIST_proposal/C13/mapping/params/all_params.tsv",
+    "spd=/mnt/cephfs1/projects/SulfitobacterM53_ICBM16-18_transcriptome/test/outDoMap_4readpairs_ICBM16",
+    "allrefs_params=/mnt/cephfs1/projects/SulfitobacterM53_ICBM16-18_transcriptome/01_Read_Mapping_DoMap/00_params/all_refs_params.tsv",
     "continue=false",
-] #
+] =#
 
 
 #=
 const args = [
     "projtype=singleworkflow",
-    "pd_prefix=/data3/CLM_projs/TEST_Workflows/outDoMap_", #/data3/CLM_projs/RESIST_proposal/C13/mapping/out",
-    "inref=/data3/CLM_projs/TEST_Workflows/inDoMap/AOB2Aal2016_NonIntegrated_outer_thresholding.fna", #/data3/CLM_projs/RESIST_proposal/C13/viruses/ExStreamIMP_C13_ALL_NonIntegrated_outer_thresholding.fna",
-    "inreadpairs=/data3/CLM_projs/TEST_Workflows/inDoBiP/params/readpairs_2ref.tsv", #/data3/CLM_projs/RESIST_proposal/C13/mapping/params/reads_C13.tsv", # one row contains 
+    "pd_prefix=/mnt/cephfs1/projects/SulfitobacterM53_ICBM16-18_transcriptome/test/outDoMap_2readpairs_2", #/data3/CLM_projs/RESIST_proposal/C13/mapping/out",     
+    "inref=/data3/CLM_projs/SulfivirusesICBM_all/Sulfiviruses_72Fullgenomes/Sulfiviruses_72Full_individual/ICBM16.fasta",
+    "inreadpairs=/mnt/cephfs1/projects/SulfitobacterM53_ICBM16-18_transcriptome/01_Read_Mapping_DoMap/00_params/read_pairs_ICBM16.tsv", #/data3/CLM_projs/RESIST_proposal/C13/mapping/params/reads_C13.tsv", # one row contains 
     
     "readtypes=short",
-    "maptool=bowtie2", #or minimap2' defaults to minimap2 if readtypes is "long" or "mixed"
+    "maptool=bbmap", #or bowtie2, minimap2 or bbmap. It defaults to minimap2 if readtypes is "long" or "mixed"
     "tokeep=bam",
     "samview_flag4exclusion=false",
     "samview_flag4exclusion_val=3584",
 
+    "bbmap_p=/software/conda/soft/BBTools/bbmap_39.14/bbmap.sh",
     "minimap2_p=/software/conda/soft/minimap2-2.26_x64-linux/minimap2",
     "shrinksam_p=/software/conda/soft/shrinksam/shrinksam",
     "samtools_p=/software/conda/soft/samtools/samtools-1.18Inst/bin/samtools",
 
+    #postmap filtering bbmap
+    "idfilter=1.0",
+    "subfilter=0",
+    "insfilter=0",
+    "delfilter=0",
+    "indelfilter=0",
+    "inslenfilter=0",
+    "dellenfilter=0",
+    "nfilter=0",
+    "ambiguous=toss", 
+
     "continue=false",
-    "num_threads=30"
+    "num_threads=20"
 ] =#
 
+#= To inactivate when used just as library
 if "--help" in args
-    println("DoViP - a workflow for virus prediction in metagenomes.")
+    println("DoMap - a workflow for read mapping with a choice of three aligners: BBMap, Bowtie or MiniMap2.")
 end
 
 println("Start DoMap!")
 
-proj = initialize_workflow(args, ProjDoMap_fun) # args
-Threads.nthreads() = 20
+proj = initialize_workflow(args, ProjSDoMap_fun) # args
+
 
 if proj.projtype == "singleworkflow"
     run_workflow(proj)
@@ -65,15 +78,7 @@ elseif proj.projtype == "multipleworkflow"
 end
 
 println("DoMap is done!")
+=#
 
 end # module DoMap_Lib
 
-
-#
-#= ProjMultiWorkflow - a multiple binning workflow
-const args = [
-    "projtype=multipleworkflow",
-    "spd=/mnt/XIO_2/data3/CLM_projs/TEST_Workflows/outDoBiP1",
-    "allrefs_params=/mnt/XIO_2/data3/CLM_projs/TEST_Workflows/inDoBiP/params/master_2refs.tsv",
-    "continue=false",
-]=#
